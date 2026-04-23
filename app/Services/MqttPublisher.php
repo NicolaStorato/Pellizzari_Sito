@@ -10,9 +10,42 @@ use PhpMqtt\Client\MqttClient;
 class MqttPublisher
 {
     /**
+     * Pubblica un comando strutturato sul topic di un dispenser.
+     *
      * @param  array<string, mixed>  $payload
      */
     public function publishCommand(Dispenser $dispenser, string $command, array $payload = []): bool
+    {
+        $topicRoot = trim((string) config('services.mqtt.topic_root', 'smart-dispenser'), '/');
+        $topicBase = $dispenser->mqtt_base_topic ?: $topicRoot.'/'.$dispenser->device_uid;
+        $topic = $topicBase.'/commands/'.$command;
+
+        return $this->publishRaw($topic, json_encode([
+            'command' => $command,
+            'issued_at' => now()->toIso8601String(),
+            'payload' => $payload,
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * Pubblica un payload JSON grezzo su qualsiasi topic arbitrario.
+     * Usato ad esempio per rispondere al topic reply_to delle richieste di login mobile.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function publishTo(string $topic, array $payload): bool
+    {
+        try {
+            return $this->publishRaw($topic, json_encode($payload, JSON_THROW_ON_ERROR));
+        } catch (\JsonException) {
+            return false;
+        }
+    }
+
+    /**
+     * Apre una connessione, pubblica il messaggio e si disconnette.
+     */
+    private function publishRaw(string $topic, string $message): bool
     {
         $host = (string) config('services.mqtt.host', '');
 
@@ -34,17 +67,9 @@ class MqttPublisher
             ->setPassword($password)
             ->setUseTls($useTls);
 
-        $topicRoot = trim((string) config('services.mqtt.topic_root', 'smart-dispenser'), '/');
-        $topicBase = $dispenser->mqtt_base_topic ?: $topicRoot.'/'.$dispenser->device_uid;
-        $topic = $topicBase.'/commands/'.$command;
-
         try {
             $mqtt->connect($connectionSettings, $cleanSession);
-            $mqtt->publish($topic, json_encode([
-                'command' => $command,
-                'issued_at' => now()->toIso8601String(),
-                'payload' => $payload,
-            ], JSON_THROW_ON_ERROR), 0);
+            $mqtt->publish($topic, $message, 0);
             $mqtt->disconnect();
 
             return true;

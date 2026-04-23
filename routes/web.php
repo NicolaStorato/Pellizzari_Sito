@@ -77,5 +77,9 @@ Route::middleware('auth')->group(function (): void {
             // Invia manualmente la terapia al dispenser via MQTT
             Route::post('/therapy-plans/{therapy_plan}/send-mqtt', [TherapyPlanController::class, 'sendViaMqtt'])
                 ->name('therapy-plans.send-mqtt');
+
+            // Pubblica tutte le terapie attive del paziente associato al dispenser
+            Route::post('/dispensers/{dispenser}/publish-all-therapies', [DispenserController::class, 'publishAllTherapies'])
+                ->name('dispensers.publish-all-therapies');
         });
 });

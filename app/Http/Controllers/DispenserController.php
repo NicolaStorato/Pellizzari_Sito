@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreDispenserRequest;
 use App\Http\Requests\UpdateDispenserRequest;
 use App\Models\Dispenser;
+use App\Models\TherapyPlan;
 use App\Models\User;
+use App\Services\MqttPublisher;
 use App\UserRole;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Collection;
@@ -123,6 +125,42 @@ class DispenserController extends Controller
     }
 
     /**
+     * Pubblica tutte le terapie attive del paziente collegato al dispenser via MQTT.
+     */
+    public function publishAllTherapies(Dispenser $dispenser, MqttPublisher $mqttPublisher): RedirectResponse
+    {
+        if ($dispenser->patient_id === null) {
+            return back()->with('status', 'Nessun paziente associato a questo dispenser.');
+        }
+
+        $therapyPlans = TherapyPlan::query()
+            ->where('patient_id', $dispenser->patient_id)
+            ->where('is_active', true)
+            ->with(['medicine', 'schedules'])
+            ->get();
+
+        if ($therapyPlans->isEmpty()) {
+            return back()->with('status', 'Nessuna terapia attiva trovata per il paziente.');
+        }
+
+        $sent = 0;
+        $failed = 0;
+
+        foreach ($therapyPlans as $therapyPlan) {
+            $this->publishSingleTherapy($dispenser, $therapyPlan, $mqttPublisher)
+                ? $sent++
+                : $failed++;
+        }
+
+        $message = "Pubblicate {$sent} terapie sul dispenser.";
+        if ($failed > 0) {
+            $message .= " {$failed} non inviate (broker MQTT non disponibile).";
+        }
+
+        return back()->with('status', $message);
+    }
+
+    /**
      * @return Collection<int, User>
      */
     private function selectablePatients(User $user): Collection
@@ -135,6 +173,36 @@ class DispenserController extends Controller
             ->where('users.role', UserRole::Patient->value)
             ->orderBy('users.name')
             ->get(['users.id', 'users.name']);
+    }
+
+    /**
+     * Compone il payload della terapia e lo pubblica sul dispenser via MQTT.
+     */
+    private function publishSingleTherapy(Dispenser $dispenser, TherapyPlan $therapyPlan, MqttPublisher $mqttPublisher): bool
+    {
+        $schedules = $therapyPlan->schedules
+            ->pluck('scheduled_time')
+            ->map(static fn ($time): string => substr((string) $time, 0, 5))
+            ->values()
+            ->all();
+
+        $payload = [
+            'therapy_plan_id' => $therapyPlan->id,
+            'medicine'        => $therapyPlan->medicine?->name,
+            'dose_amount'     => (float) $therapyPlan->dose_amount,
+            'dose_unit'       => $therapyPlan->dose_unit,
+            'schedules'       => $schedules,
+            'starts_on'       => $therapyPlan->starts_on?->toDateString(),
+            'ends_on'         => $therapyPlan->ends_on?->toDateString(),
+            'is_active'       => $therapyPlan->is_active,
+            'instructions'    => $therapyPlan->instructions,
+        ];
+
+        return $mqttPublisher->publishCommand(
+            dispenser: $dispenser,
+            command: 'set_therapy',
+            payload: $payload,
+        );
     }
 
     private function guardPatientAccess(int $patientId, User $user): void

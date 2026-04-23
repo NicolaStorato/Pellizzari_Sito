@@ -72,6 +72,30 @@
                     </div>
                 @endif
             </article>
+
+            {{-- Azione rapida: pubblica tutte le terapie attive del paziente --}}
+            @if ($dispenser->patient_id)
+                <article class="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm md:col-span-3">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <h3 class="font-semibold text-teal-800">&#x21BA; Pubblica tutte le terapie del paziente</h3>
+                            <p class="mt-1 text-xs text-teal-700">
+                                Invia in un click tutti i piani terapeutici attivi associati a
+                                <strong>{{ $dispenser->patient->name ?? 'questo paziente' }}</strong>
+                                al dispenser via MQTT (<code class="font-mono">set_therapy</code>).
+                            </p>
+                        </div>
+                        <form action="{{ route('dispensers.publish-all-therapies', $dispenser) }}" method="POST">
+                            @csrf
+                            <button type="submit"
+                                    class="btn-primary whitespace-nowrap"
+                                    onclick="return confirm('Pubblicare tutte le terapie attive sul dispenser?')">
+                                Pubblica tutte le terapie
+                            </button>
+                        </form>
+                    </div>
+                </article>
+            @endif
         </div>
     </section>
 

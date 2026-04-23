@@ -13,3 +13,10 @@ Schedule::command('device:mqtt-listen --max-seconds=55')
     ->withoutOverlapping()
     ->runInBackground()
     ->when(static fn (): bool => config('services.mqtt.host') !== '');
+
+// Verifica (e crea se mancante) il dispositivo ESP32-PILL-001 all'avvio
+// e poi ogni notte, cosi' il dispositivo e' sempre presente nel DB.
+Schedule::command('device:ensure-esp32')
+    ->dailyAt('00:05')
+    ->withoutOverlapping()
+    ->when(static fn (): bool => config('services.mqtt.host') !== '');

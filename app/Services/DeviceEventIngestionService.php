@@ -15,7 +15,7 @@ class DeviceEventIngestionService
     /**
      * @param  array<string, mixed>  $payload
      * @return array{
-     *     sensor_log: SensorLog,
+     *     sensor_log: SensorLog|null,
      *     violations: Collection<int, array<string, mixed>>
      * }
      */
@@ -27,6 +27,23 @@ class DeviceEventIngestionService
 
         $temperature = (float) $payload['temperature'];
         $humidity = (float) $payload['humidity'];
+
+        // Aggiorna sempre lo stato online del dispenser, indipendentemente dal throttle
+        $dispenser->update([
+            'last_seen_at' => $recordedAt,
+            'is_online' => true,
+        ]);
+
+        // Salva nel DB al massimo 1 log di telemetria per ora per dispenser
+        $alreadyLoggedThisHour = SensorLog::query()
+            ->where('dispenser_id', $dispenser->id)
+            ->where('recorded_at', '>=', now()->startOfHour())
+            ->exists();
+
+        if ($alreadyLoggedThisHour) {
+            return ['sensor_log' => null, 'violations' => collect()];
+        }
+
         $violations = $this->detectThresholdViolations(
             patientId: $dispenser->patient_id,
             temperature: $temperature,
@@ -41,11 +58,6 @@ class DeviceEventIngestionService
             'threshold_exceeded' => $violations->isNotEmpty(),
             'threshold_violations' => $violations->values()->all(),
             'recorded_at' => $recordedAt,
-        ]);
-
-        $dispenser->update([
-            'last_seen_at' => $recordedAt,
-            'is_online' => true,
         ]);
 
         foreach ($violations as $violation) {

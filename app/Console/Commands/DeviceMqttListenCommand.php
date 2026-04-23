@@ -4,8 +4,12 @@ namespace App\Console\Commands;
 
 use App\Models\Dispenser;
 use App\Models\DoseLog;
+use App\Models\User;
 use App\Services\DeviceEventIngestionService;
+use App\Services\MqttPublisher;
+use App\UserRole;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -24,6 +28,7 @@ class DeviceMqttListenCommand extends Command
      */
     protected $signature = 'device:mqtt-listen
                             {--topic-root= : Root topic MQTT (default da MQTT_TOPIC_ROOT)}
+                            {--login-topic=esp32/login_request : Topic su cui ascoltare le richieste di login mobile}
                             {--max-seconds=0 : Arresta il listener dopo N secondi (0 = infinito)}';
 
     /**
@@ -33,8 +38,10 @@ class DeviceMqttListenCommand extends Command
      */
     protected $description = 'Ascolta eventi MQTT dei dispenser e li salva nel database applicativo';
 
-    public function __construct(private readonly DeviceEventIngestionService $deviceEventIngestionService)
-    {
+    public function __construct(
+        private readonly DeviceEventIngestionService $deviceEventIngestionService,
+        private readonly MqttPublisher $mqttPublisher,
+    ) {
         parent::__construct();
     }
 
@@ -62,6 +69,8 @@ class DeviceMqttListenCommand extends Command
         $telemetrySuffix = trim((string) config('services.mqtt.topic_telemetry_suffix', 'events/telemetry'), '/');
         $doseLogSuffix = trim((string) config('services.mqtt.topic_dose_log_suffix', 'events/dose-log'), '/');
         $statusSuffix = trim((string) config('services.mqtt.topic_status_suffix', 'status'), '/');
+        $loginTopic = (string) $this->option('login-topic');
+
         $port = (int) config('services.mqtt.port', 1883);
         $clientId = (string) config('services.mqtt.client_id', 'smart-dispenser-web');
         $cleanSession = (bool) config('services.mqtt.clean_session', true);
@@ -81,6 +90,7 @@ class DeviceMqttListenCommand extends Command
             $mqtt->connect($connectionSettings, $cleanSession);
             $this->info('Connesso al broker MQTT '.$host.':'.$port);
 
+            // --- Topic dispenser ---
             $this->subscribe(
                 mqtt: $mqtt,
                 topicFilter: $topicRoot.'/+/'.$telemetrySuffix,
@@ -102,6 +112,15 @@ class DeviceMqttListenCommand extends Command
                 topicFilter: $topicRoot.'/+/'.$statusSuffix,
                 handler: function (string $topic, string $message) use ($statusSuffix): void {
                     $this->ingestStatusMessage($topic, $message, $statusSuffix);
+                },
+            );
+
+            // --- Topic login mobile (tecnica reply_to) ---
+            $this->subscribe(
+                mqtt: $mqtt,
+                topicFilter: $loginTopic,
+                handler: function (string $topic, string $message): void {
+                    $this->handleMobileLoginRequest($topic, $message);
                 },
             );
 
@@ -133,21 +152,106 @@ class DeviceMqttListenCommand extends Command
         }
     }
 
-    /**
-     * @param  callable(string, string):void  $handler
-     */
-    private function subscribe(MqttClient $mqtt, string $topicFilter, callable $handler): void
-    {
-        $mqtt->subscribe(
-            $topicFilter,
-            static function (string $topic, string $message, bool $retained, ?array $matchedWildcards) use ($handler): void {
-                $handler($topic, $message);
-            },
-            0,
-        );
+    // =========================================================================
+    // Login mobile via MQTT (tecnica reply_to)
+    // =========================================================================
 
-        $this->line('Sottoscritto topic: '.$topicFilter);
+    /**
+     * Gestisce una richiesta di login pubblicata dall'app mobile.
+     *
+     * Payload atteso:
+     *   { "username": "...", "password": "...", "reply_to": "esp32/risposta/AndroidApp_..." }
+     *
+     * Risposta pubblicata sul topic reply_to:
+     *   { "success": true,  "user_id": 3, "name": "Mario Rossi", "role": "patient", "token": "..." }
+     *   { "success": false, "error": "Credenziali non valide." }
+     */
+    private function handleMobileLoginRequest(string $topic, string $message): void
+    {
+        $this->line('[LOGIN] Richiesta ricevuta su '.$topic);
+
+        $payload = $this->decodePayload($message, $topic);
+
+        if ($payload === null) {
+            return;
+        }
+
+        $validator = Validator::make($payload, [
+            'username' => ['required', 'string', 'max:255'],
+            'password' => ['required', 'string', 'max:255'],
+            'reply_to' => ['required', 'string', 'max:500'],
+        ]);
+
+        if ($validator->fails()) {
+            $this->warn('[LOGIN] Payload non valido: '.$validator->errors()->first());
+            return;
+        }
+
+        $validated = $validator->validated();
+        $replyTo   = (string) $validated['reply_to'];
+
+        // Cerca l'utente per email o per nome (flessibile come da immagine)
+        /** @var User|null $user */
+        $user = User::query()
+            ->where('email', $validated['username'])
+            ->orWhere('name', $validated['username'])
+            ->first();
+
+        // Verifica password
+        if ($user === null || ! Hash::check($validated['password'], $user->password)) {
+            $this->warn('[LOGIN] Autenticazione fallita per username: '.$validated['username']);
+
+            $this->mqttPublisher->publishTo($replyTo, [
+                'success'    => false,
+                'error'      => 'Credenziali non valide.',
+                'replied_at' => now()->toIso8601String(),
+            ]);
+
+            return;
+        }
+
+        // Utente disattivato
+        if (! $user->is_active) {
+            $this->warn('[LOGIN] Account disattivato per: '.$user->email);
+
+            $this->mqttPublisher->publishTo($replyTo, [
+                'success'    => false,
+                'error'      => 'Account disattivato. Contatta il tuo medico.',
+                'replied_at' => now()->toIso8601String(),
+            ]);
+
+            return;
+        }
+
+        // Aggiorna last_login_at
+        $user->update(['last_login_at' => now()]);
+
+        // Recupera il dispenser del paziente (se è un paziente)
+        $dispenserUid = null;
+        if ($user->hasRole(UserRole::Patient)) {
+            $dispenser = Dispenser::query()
+                ->where('patient_id', $user->id)
+                ->where('is_active', true)
+                ->first();
+            $dispenserUid = $dispenser?->device_uid;
+        }
+
+        $this->info('[LOGIN] Autenticazione riuscita per: '.$user->email.' (ruolo: '.$user->role?->value.')');
+
+        $this->mqttPublisher->publishTo($replyTo, [
+            'success'      => true,
+            'user_id'      => $user->id,
+            'name'         => $user->name,
+            'email'        => $user->email,
+            'role'         => $user->role?->value,
+            'dispenser_uid'=> $dispenserUid,
+            'replied_at'   => now()->toIso8601String(),
+        ]);
     }
+
+    // =========================================================================
+    // Ingest dispenser events
+    // =========================================================================
 
     private function ingestTelemetryMessage(string $topic, string $message, string $telemetrySuffix): void
     {
@@ -179,12 +283,16 @@ class DeviceMqttListenCommand extends Command
             return;
         }
 
-        $this->deviceEventIngestionService->ingestTelemetry(
+        $result = $this->deviceEventIngestionService->ingestTelemetry(
             dispenser: $dispenser,
             payload: $validator->validated(),
         );
 
-        $this->line('Telemetria acquisita da '.$dispenser->device_uid);
+        if ($result['sensor_log'] !== null) {
+            $this->line('Telemetria acquisita da '.$dispenser->device_uid);
+        } else {
+            $this->line('Telemetria ricevuta da '.$dispenser->device_uid.' (throttle: già salvato in questa ora, solo last_seen_at aggiornato)');
+        }
     }
 
     private function ingestDoseLogMessage(string $topic, string $message, string $doseLogSuffix): void
@@ -269,6 +377,26 @@ class DeviceMqttListenCommand extends Command
         );
 
         $this->line('Status aggiornato per '.$dispenser->device_uid);
+    }
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+
+    /**
+     * @param  callable(string, string):void  $handler
+     */
+    private function subscribe(MqttClient $mqtt, string $topicFilter, callable $handler): void
+    {
+        $mqtt->subscribe(
+            $topicFilter,
+            static function (string $topic, string $message, bool $retained, ?array $matchedWildcards) use ($handler): void {
+                $handler($topic, $message);
+            },
+            0,
+        );
+
+        $this->line('Sottoscritto topic: '.$topicFilter);
     }
 
     /**

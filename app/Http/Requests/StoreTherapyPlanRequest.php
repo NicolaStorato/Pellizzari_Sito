@@ -32,7 +32,7 @@ class StoreTherapyPlanRequest extends FormRequest
             'starts_on' => ['required', 'date'],
             'ends_on' => ['nullable', 'date', 'after_or_equal:starts_on'],
             'is_active' => ['required', 'boolean'],
-            'schedules' => ['required', 'array', 'min:1'],
+            'schedules' => ['required', 'array', 'min:1', 'max:1'],
             'schedules.*' => ['required', 'date_format:H:i'],
         ];
     }

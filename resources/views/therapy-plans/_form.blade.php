@@ -1,5 +1,5 @@
 @php
-    $existingSchedules = old('schedules', $scheduleValues ?? ['08:00']);
+    $existingSchedule = old('schedules.0', $scheduleValues[0] ?? '08:00');
 @endphp
 
 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -53,11 +53,9 @@
 </div>
 
 <div class="mt-6 rounded-xl border border-slate-200 p-4">
-    <p class="text-sm font-semibold text-slate-700">Orari giornalieri (HH:MM)</p>
-    <p class="mt-1 text-xs text-slate-500">Inserisci almeno un orario. Puoi aggiungere fino a 6 slot.</p>
-    <div class="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
-        @for ($i = 0; $i < max(count($existingSchedules), 3); $i++)
-            <input class="form-input" type="time" name="schedules[]" value="{{ $existingSchedules[$i] ?? '' }}">
-        @endfor
+    <p class="text-sm font-semibold text-slate-700">Orario giornaliero (HH:MM)</p>
+    <p class="mt-1 text-xs text-slate-500">Inserisci l'orario in cui il dispenser deve erogare la dose ogni giorno.</p>
+    <div class="mt-3">
+        <input class="form-input w-48" type="time" name="schedules[]" value="{{ $existingSchedule }}" required>
     </div>
 </div>

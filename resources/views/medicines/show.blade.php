@@ -19,8 +19,8 @@
             <article class="rounded-xl border border-slate-200 p-4">
                 <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Conservazione</h3>
                 <dl class="mt-3 space-y-2 text-sm">
-                    <div><dt class="font-medium">Temp. minima</dt><dd>{{ $medicine->minimum_temperature ?? '-' }} °C</dd></div>
-                    <div><dt class="font-medium">Temp. massima</dt><dd>{{ $medicine->maximum_temperature ?? '-' }} °C</dd></div>
+                    <div><dt class="font-medium">Temp. minima</dt><dd>{{ $medicine->minimum_temperature ?? '-' }} &deg;C</dd></div>
+                    <div><dt class="font-medium">Temp. massima</dt><dd>{{ $medicine->maximum_temperature ?? '-' }} &deg;C</dd></div>
                     <div><dt class="font-medium">Umidita minima</dt><dd>{{ $medicine->minimum_humidity ?? '-' }} %</dd></div>
                     <div><dt class="font-medium">Umidita massima</dt><dd>{{ $medicine->maximum_humidity ?? '-' }} %</dd></div>
                 </dl>
@@ -48,3 +48,4 @@
         </div>
     </section>
 @endsection
+

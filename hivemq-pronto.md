@@ -138,7 +138,6 @@ Payload:
 {
   "temperature": 24.7,
   "humidity": 48.3,
-  "battery_level": 87,
   "recorded_at": "2026-04-22T18:30:00+02:00"
 }
 ```

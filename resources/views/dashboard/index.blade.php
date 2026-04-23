@@ -48,7 +48,7 @@
                         </div>
                         <div class="space-y-2 text-sm">
                             <div>
-                                <div class="mb-1 flex justify-between"><span>Temperatura</span><span>{{ $log->temperature }}°C</span></div>
+                                <div class="mb-1 flex justify-between"><span>Temperatura</span><span>{{ $log->temperature }}&deg;C</span></div>
                                 <div class="h-2 overflow-hidden rounded-full bg-slate-200">
                                     <div class="h-full bg-sky-600" style="width: {{ min(100, max(0, ((float) $log->temperature / 40) * 100)) }}%"></div>
                                 </div>
@@ -140,3 +140,4 @@
         </div>
     </section>
 @endsection
+

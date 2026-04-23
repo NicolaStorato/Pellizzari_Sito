@@ -38,7 +38,6 @@ class DeviceEventIngestionService
             'patient_id' => $dispenser->patient_id,
             'temperature' => $temperature,
             'humidity' => $humidity,
-            'battery_level' => $payload['battery_level'] ?? null,
             'threshold_exceeded' => $violations->isNotEmpty(),
             'threshold_violations' => $violations->values()->all(),
             'recorded_at' => $recordedAt,

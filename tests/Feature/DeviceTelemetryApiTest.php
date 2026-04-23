@@ -27,7 +27,6 @@ test('device telemetry is stored and creates alert when thresholds are exceeded'
         ->postJson(route('api.device.telemetry'), [
             'temperature' => 30.2,
             'humidity' => 76.5,
-            'battery_level' => 81,
         ]);
 
     $response->assertCreated();
@@ -62,4 +61,27 @@ test('missed dose reported by device creates a missed dose alert', function () {
             ->where('type', Alert::TYPE_MISSED_DOSE)
             ->exists()
     )->toBeTrue();
+});
+
+test('device telemetry accepts italian payload keys', function () {
+    $patient = User::factory()->patient()->create();
+    $dispenser = Dispenser::factory()->create([
+        'patient_id' => $patient->id,
+        'api_token' => 'device-token-it',
+    ]);
+
+    $response = $this
+        ->withHeader('X-Device-Token', $dispenser->api_token)
+        ->postJson(route('api.device.telemetry'), [
+            'temperatura' => 22.5,
+            'umidita' => 48.3,
+        ]);
+
+    $response->assertCreated();
+
+    $sensorLog = SensorLog::query()->latest('id')->first();
+
+    expect($sensorLog)->not->toBeNull();
+    expect((float) $sensorLog->temperature)->toBe(22.5);
+    expect((float) $sensorLog->humidity)->toBe(48.3);
 });

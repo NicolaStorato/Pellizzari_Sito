@@ -3,6 +3,7 @@
 use App\Models\PatientAssignment;
 use App\Models\User;
 use App\UserRole;
+use Illuminate\Support\Facades\Hash;
 
 test('admin can register a doctor from user management', function () {
     $admin = User::factory()->admin()->create();
@@ -62,22 +63,20 @@ test('doctor can register caregiver but cannot register another doctor', functio
     )->toBeFalse();
 });
 
-test('patient can attach a registered doctor and caregiver to self', function () {
+test('patient cannot use legacy care-team linking actions', function () {
     $patient = User::factory()->patient()->create();
     $doctor = User::factory()->doctor()->create();
     $caregiver = User::factory()->caregiver()->create();
 
     $this->actingAs($patient)
-        ->from(route('care-team.index'))
-        ->post(route('care-team.attach-doctor'), [
+        ->postJson('/care-team/doctor', [
             'doctor_id' => $doctor->id,
-        ])->assertRedirect(route('care-team.index'));
+        ])->assertNotFound();
 
     $this->actingAs($patient)
-        ->from(route('care-team.index'))
-        ->post(route('care-team.attach-caregiver'), [
+        ->postJson('/care-team/caregiver', [
             'caregiver_id' => $caregiver->id,
-        ])->assertRedirect(route('care-team.index'));
+        ])->assertNotFound();
 
     expect(
         PatientAssignment::query()
@@ -85,7 +84,7 @@ test('patient can attach a registered doctor and caregiver to self', function ()
             ->where('member_id', $doctor->id)
             ->where('role', UserRole::Doctor->value)
             ->exists()
-    )->toBeTrue();
+    )->toBeFalse();
 
     expect(
         PatientAssignment::query()
@@ -93,20 +92,50 @@ test('patient can attach a registered doctor and caregiver to self', function ()
             ->where('member_id', $caregiver->id)
             ->where('role', UserRole::Caregiver->value)
             ->exists()
-    )->toBeTrue();
+    )->toBeFalse();
 });
 
-test('caregiver can attach self to a registered patient', function () {
+test('doctor can update caregiver password and details from user management', function () {
+    $doctor = User::factory()->doctor()->create();
+    $caregiver = User::factory()->caregiver()->create([
+        'password' => Hash::make('oldpassword'),
+        'is_active' => true,
+    ]);
+
+    $response = $this->actingAs($doctor)
+        ->from(route('user-management.edit', $caregiver))
+        ->patch(route('user-management.update', $caregiver), [
+            'name' => 'Familiare Aggiornato',
+            'email' => 'caregiver.updated@example.com',
+            'phone' => '0123456789',
+            'address' => 'Via Nuova 1',
+            'date_of_birth' => $caregiver->date_of_birth?->format('Y-m-d'),
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+            'is_active' => '1',
+            'role' => $caregiver->role->value,
+        ]);
+
+    $response->assertRedirect(route('user-management.index'));
+
+    $caregiver->refresh();
+
+    expect($caregiver->name)->toBe('Familiare Aggiornato');
+    expect($caregiver->email)->toBe('caregiver.updated@example.com');
+    expect($caregiver->phone)->toBe('0123456789');
+    expect(Hash::check('newpassword123', $caregiver->password))->toBeTrue();
+});
+
+test('caregiver cannot use legacy care-team linking actions', function () {
     $caregiver = User::factory()->caregiver()->create();
     $patient = User::factory()->patient()->create();
 
     $response = $this->actingAs($caregiver)
-        ->from(route('care-team.index'))
-        ->post(route('care-team.attach-patient'), [
+        ->postJson('/care-team/patient', [
             'patient_id' => $patient->id,
         ]);
 
-    $response->assertRedirect(route('care-team.index'));
+    $response->assertNotFound();
 
     expect(
         PatientAssignment::query()
@@ -114,5 +143,5 @@ test('caregiver can attach self to a registered patient', function () {
             ->where('member_id', $caregiver->id)
             ->where('role', UserRole::Caregiver->value)
             ->exists()
-    )->toBeTrue();
+    )->toBeFalse();
 });

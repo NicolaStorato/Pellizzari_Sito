@@ -47,6 +47,39 @@ return [
         'topic_telemetry_suffix' => env('MQTT_TOPIC_TELEMETRY_SUFFIX', 'events/telemetry'),
         'topic_dose_log_suffix' => env('MQTT_TOPIC_DOSE_LOG_SUFFIX', 'events/dose-log'),
         'topic_status_suffix' => env('MQTT_TOPIC_STATUS_SUFFIX', 'status'),
+        'commands' => [
+            'dispense_now' => [
+                'label' => 'Eroga subito',
+                'description' => 'Eroga immediatamente una dose dal vano selezionato.',
+                'payload' => [
+                    'slot' => 1,
+                ],
+            ],
+            'pause_therapy' => [
+                'label' => 'Pausa terapia',
+                'description' => 'Mette in pausa l\'esecuzione automatica del piano per alcuni minuti.',
+                'payload' => [
+                    'minutes' => 30,
+                ],
+            ],
+            'resume_therapy' => [
+                'label' => 'Riprendi terapia',
+                'description' => 'Riattiva il piano terapia dopo una pausa.',
+                'payload' => [],
+            ],
+            'sync_plan' => [
+                'label' => 'Sincronizza piano',
+                'description' => 'Forza la risincronizzazione del piano terapia sul dispositivo.',
+                'payload' => [
+                    'force' => true,
+                ],
+            ],
+            'ping' => [
+                'label' => 'Ping dispositivo',
+                'description' => 'Richiede un heartbeat immediato dal dispenser.',
+                'payload' => [],
+            ],
+        ],
     ],
 
 ];

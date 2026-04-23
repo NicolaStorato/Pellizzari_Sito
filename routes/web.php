@@ -2,11 +2,12 @@
 
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\CareTeamController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DispenserController;
+use App\Http\Controllers\DoctorAppointmentController;
 use App\Http\Controllers\MedicineController;
 use App\Http\Controllers\MqttCommandController;
+use App\Http\Controllers\PatientAppointmentController;
 use App\Http\Controllers\PatientController;
 use App\Http\Controllers\SensorLogController;
 use App\Http\Controllers\TherapyPlanController;
@@ -26,28 +27,38 @@ Route::middleware('auth')->group(function (): void {
 
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
-    Route::get('/sensor-logs', [SensorLogController::class, 'index'])
-        ->name('sensor-logs.index');
-
-    Route::get('/alerts', [AlertController::class, 'index'])
-        ->name('alerts.index');
-
-    Route::middleware('role:'.UserRole::Patient->value.','.UserRole::Caregiver->value)
+    Route::middleware('role:'.UserRole::Patient->value)
         ->group(function (): void {
-            Route::get('/care-team', [CareTeamController::class, 'index'])
-                ->name('care-team.index');
-            Route::post('/care-team/doctor', [CareTeamController::class, 'attachDoctor'])
-                ->name('care-team.attach-doctor');
-            Route::post('/care-team/caregiver', [CareTeamController::class, 'attachCaregiver'])
-                ->name('care-team.attach-caregiver');
-            Route::post('/care-team/patient', [CareTeamController::class, 'caregiverAttachPatient'])
-                ->name('care-team.attach-patient');
+            Route::get('/appointments', [PatientAppointmentController::class, 'index'])
+                ->name('appointments.index');
+            Route::post('/appointments', [PatientAppointmentController::class, 'store'])
+                ->name('appointments.store');
+            Route::patch('/appointments/{appointment}/cancel', [PatientAppointmentController::class, 'cancel'])
+                ->name('appointments.cancel');
+        });
+
+    Route::middleware('role:'.UserRole::Doctor->value)
+        ->group(function (): void {
+            Route::get('/doctor/appointments', [DoctorAppointmentController::class, 'index'])
+                ->name('doctor-appointments.index');
+            Route::patch('/doctor/appointments/{appointment}', [DoctorAppointmentController::class, 'update'])
+                ->name('doctor-appointments.update');
         });
 
     Route::middleware('role:'.UserRole::Admin->value.','.UserRole::Doctor->value)
         ->group(function (): void {
+            Route::get('/sensor-logs', [SensorLogController::class, 'index'])
+                ->name('sensor-logs.index');
+
+            Route::get('/alerts', [AlertController::class, 'index'])
+                ->name('alerts.index');
+
             Route::get('/user-management', [UserManagementController::class, 'index'])
                 ->name('user-management.index');
+            Route::get('/user-management/{user}/edit', [UserManagementController::class, 'edit'])
+                ->name('user-management.edit');
+            Route::patch('/user-management/{user}', [UserManagementController::class, 'update'])
+                ->name('user-management.update');
             Route::post('/user-management', [UserManagementController::class, 'store'])
                 ->name('user-management.store');
 

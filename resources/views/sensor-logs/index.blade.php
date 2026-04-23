@@ -36,7 +36,6 @@
                             <th class="pb-2">Dispenser</th>
                             <th class="pb-2">Temperatura</th>
                             <th class="pb-2">Umidita</th>
-                            <th class="pb-2">Batteria</th>
                             <th class="pb-2">Soglie</th>
                         </tr>
                     </thead>
@@ -46,9 +45,8 @@
                                 <td class="py-2">{{ $log->recorded_at?->format('d/m/Y H:i') }}</td>
                                 <td class="py-2">{{ $log->patient->name ?? '-' }}</td>
                                 <td class="py-2">{{ $log->dispenser->name ?? '-' }}</td>
-                                <td class="py-2">{{ $log->temperature }} °C</td>
+                                <td class="py-2">{{ $log->temperature }} &deg;C</td>
                                 <td class="py-2">{{ $log->humidity }} %</td>
-                                <td class="py-2">{{ $log->battery_level !== null ? $log->battery_level.'%' : '-' }}</td>
                                 <td class="py-2">
                                     @if ($log->threshold_exceeded)
                                         <span class="rounded-full bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">Fuori soglia</span>
@@ -59,7 +57,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="py-6 text-center text-slate-500">Nessun log sensore trovato.</td>
+                                <td colspan="6" class="py-6 text-center text-slate-500">Nessun log sensore trovato.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -70,3 +68,4 @@
         </div>
     </section>
 @endsection
+

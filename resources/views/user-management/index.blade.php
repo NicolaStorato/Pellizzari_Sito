@@ -62,6 +62,9 @@
     <section class="panel">
         <div class="panel-header">Utenti Registrati (Dottori e Familiari)</div>
         <div class="panel-body">
+            <p class="mb-4 text-sm text-slate-600">
+                Per modificare un utente gia esistente o reimpostare la sua password, usa il pulsante dedicato nella colonna azioni.
+            </p>
             <div class="overflow-x-auto">
                 <table class="min-w-full text-left text-sm">
                     <thead class="text-xs uppercase tracking-wider text-slate-500">
@@ -71,6 +74,7 @@
                             <th class="pb-2">Ruolo</th>
                             <th class="pb-2">Telefono</th>
                             <th class="pb-2">Stato</th>
+                            <th class="pb-2">Azioni</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
@@ -87,10 +91,13 @@
                                         <span class="rounded-full bg-slate-200 px-2 py-1 text-xs font-semibold text-slate-600">Disattivo</span>
                                     @endif
                                 </td>
+                                <td class="py-2">
+                                    <a href="{{ route('user-management.edit', $user) }}#password" class="btn-secondary btn-sm">Modifica / Password</a>
+                                </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="5" class="py-6 text-center text-slate-500">Nessun utente registrato.</td>
+                                <td colspan="6" class="py-6 text-center text-slate-500">Nessun utente registrato.</td>
                             </tr>
                         @endforelse
                     </tbody>

@@ -9,17 +9,17 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen">
-    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <header class="panel mb-6">
+    <div class="mx-auto max-w-[1450px] px-4 py-6 sm:px-6 lg:px-10">
+        <header class="panel mb-7 overflow-hidden">
             <div class="panel-body flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Smart Dispenser 4.0</p>
-                    <h1 class="text-2xl font-bold text-slate-900">Portale Clinico e IoT</h1>
-                    <p class="text-sm text-slate-600">Monitoraggio terapia, scorte farmaci e telemetria ambientale.</p>
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Smart Dispenser 4.0</p>
+                    <h1 class="text-2xl font-bold text-slate-900 md:text-3xl">Portale Clinico e IoT</h1>
+                    <p class="text-sm text-slate-600">Monitoraggio clinico, appuntamenti e telemetria ambientale.</p>
                 </div>
                 @auth
                     <div class="flex items-center gap-3">
-                        <div class="rounded-xl bg-slate-900 px-3 py-2 text-sm text-white">
+                        <div class="rounded-xl bg-gradient-to-r from-slate-900 to-slate-700 px-3 py-2 text-sm text-white">
                             <p class="font-semibold">{{ auth()->user()->name }}</p>
                             <p class="text-xs text-slate-300">{{ auth()->user()->role?->value }}</p>
                         </div>
@@ -32,27 +32,39 @@
             </div>
         </header>
 
-        <div class="grid grid-cols-1 gap-6 lg:grid-cols-[250px_1fr]">
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
             @auth
                 <aside class="panel h-fit">
                     <div class="panel-header">Navigazione</div>
                     <nav class="panel-body space-y-2 text-sm">
-                        <a href="{{ route('dashboard') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('dashboard') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Dashboard</a>
-                        <a href="{{ route('sensor-logs.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('sensor-logs.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Log Sensori</a>
-                        <a href="{{ route('alerts.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('alerts.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Alert</a>
+                        <a href="{{ route('dashboard') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('dashboard') ? 'bg-brand-100 text-brand-700 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Dashboard</a>
 
-                        @if (auth()->user()->hasRole(\App\UserRole::Patient, \App\UserRole::Caregiver))
+                        @if (auth()->user()->hasRole(\App\UserRole::Patient))
                             <hr class="my-3 border-slate-200">
-                            <a href="{{ route('care-team.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('care-team.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Collegamenti</a>
+                            <a href="{{ route('appointments.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('appointments.*') ? 'bg-brand-100 text-brand-700 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">I Miei Appuntamenti</a>
+                        @endif
+
+                        @if (auth()->user()->hasRole(\App\UserRole::Doctor))
+                            <hr class="my-3 border-slate-200">
+                            <a href="{{ route('doctor-appointments.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('doctor-appointments.*') ? 'bg-brand-100 text-brand-700 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Pagina Appuntamenti</a>
                         @endif
 
                         @if (auth()->user()->canManageClinicalData())
+                            <a href="{{ route('sensor-logs.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('sensor-logs.*') ? 'bg-brand-100 text-brand-700 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Log Sensori</a>
+                            <a href="{{ route('alerts.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('alerts.*') ? 'bg-brand-100 text-brand-700 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Alert</a>
                             <hr class="my-3 border-slate-200">
-                            <a href="{{ route('user-management.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('user-management.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Gestione Utenti</a>
-                            <a href="{{ route('patients.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('patients.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Pazienti</a>
-                            <a href="{{ route('medicines.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('medicines.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Farmaci</a>
-                            <a href="{{ route('therapy-plans.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('therapy-plans.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Piani Terapia</a>
-                            <a href="{{ route('dispensers.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('dispensers.*') ? 'bg-sky-100 text-sky-800 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Dispenser</a>
+                            <a href="{{ route('user-management.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('user-management.*') ? 'bg-brand-100 text-brand-700 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Gestione Utenti</a>
+                            <a href="{{ route('patients.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('patients.*') ? 'bg-brand-100 text-brand-700 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Pazienti</a>
+                            <a href="{{ route('medicines.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('medicines.*') ? 'bg-brand-100 text-brand-700 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Farmaci</a>
+                            <a href="{{ route('therapy-plans.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('therapy-plans.*') ? 'bg-brand-100 text-brand-700 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Piani Terapia</a>
+                            <a href="{{ route('dispensers.index') }}" class="block rounded-lg px-3 py-2 {{ request()->routeIs('dispensers.*') ? 'bg-brand-100 text-brand-700 font-semibold' : 'text-slate-700 hover:bg-slate-100' }}">Dispenser</a>
+                        @endif
+
+                        @if (auth()->user()->hasRole(\App\UserRole::Caregiver))
+                            <hr class="my-3 border-slate-200">
+                            <p class="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600">
+                                Profilo familiare in sola consultazione.
+                            </p>
                         @endif
                     </nav>
                 </aside>

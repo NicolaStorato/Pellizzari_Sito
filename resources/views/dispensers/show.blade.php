@@ -18,20 +18,59 @@
 
             <article class="rounded-xl border border-slate-200 p-4 text-sm lg:col-span-2">
                 <h3 class="font-semibold text-slate-700">Invio Comando MQTT</h3>
+                <p class="mt-1 text-xs text-slate-500">
+                    Topic comando: <span class="font-mono">{{ $mqttCommandTopicBase }}/commands/&lt;comando&gt;</span>
+                </p>
+
                 <form action="{{ route('dispensers.mqtt-command', $dispenser) }}" method="POST" class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
                     @csrf
+                    @if ($mqttCommandTemplates !== [])
+                        <div class="md:col-span-3">
+                            <label class="text-xs uppercase tracking-wider text-slate-500" for="mqtt-command-template">Preset comando</label>
+                            <select id="mqtt-command-template" class="form-input">
+                                <option value="">Personalizzato</option>
+                                @foreach ($mqttCommandTemplates as $template)
+                                    <option value="{{ $template['command'] }}" @selected(old('command') === $template['command'])>
+                                        {{ $template['label'] }} ({{ $template['command'] }})
+                                    </option>
+                                @endforeach
+                            </select>
+                            <p id="mqtt-command-description" class="mt-1 text-xs text-slate-500">
+                                Scegli un preset per compilare automaticamente comando e payload.
+                            </p>
+                        </div>
+                    @endif
+
                     <div>
-                        <label class="text-xs uppercase tracking-wider text-slate-500">Comando</label>
-                        <input class="form-input" name="command" placeholder="dispense_now" required>
+                        <label class="text-xs uppercase tracking-wider text-slate-500" for="mqtt-command">Comando</label>
+                        <input id="mqtt-command" class="form-input" name="command" value="{{ old('command') }}" placeholder="dispense_now" required>
                     </div>
                     <div class="md:col-span-2">
-                        <label class="text-xs uppercase tracking-wider text-slate-500">Payload JSON (opzionale)</label>
-                        <input class="form-input" name="payload" placeholder='{"slot":1}'>
+                        <label class="text-xs uppercase tracking-wider text-slate-500" for="mqtt-payload">Payload JSON (opzionale)</label>
+                        <textarea id="mqtt-payload" class="form-input min-h-24 font-mono text-xs" name="payload" placeholder='{"slot":1}'>{{ old('payload') }}</textarea>
                     </div>
-                    <div class="md:col-span-3">
+                    <div class="md:col-span-3 flex flex-wrap items-center gap-2">
                         <button type="submit" class="btn-primary">Invia al Broker</button>
+                        <button type="button" id="mqtt-reset-form" class="btn-secondary">Reset</button>
                     </div>
                 </form>
+
+                @if ($mqttCommandTemplates !== [])
+                    <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">Comandi disponibili</p>
+                        <ul class="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                            @foreach ($mqttCommandTemplates as $template)
+                                <li class="rounded-lg border border-slate-200 bg-white p-2">
+                                    <p class="text-xs font-semibold text-slate-700">{{ $template['label'] }}</p>
+                                    <p class="mt-1 font-mono text-xs text-slate-600">{{ $template['command'] }}</p>
+                                    @if ($template['description'] !== '')
+                                        <p class="mt-1 text-xs text-slate-500">{{ $template['description'] }}</p>
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
             </article>
         </div>
     </section>
@@ -43,7 +82,7 @@
                 <ul class="space-y-2 text-sm">
                     @forelse ($dispenser->sensorLogs as $log)
                         <li class="rounded-lg border border-slate-200 px-3 py-2">
-                            {{ $log->recorded_at?->format('d/m H:i') }} - {{ $log->temperature }}°C / {{ $log->humidity }}%
+                            {{ $log->recorded_at?->format('d/m H:i') }} - {{ $log->temperature }} &deg;C / {{ $log->humidity }}%
                         </li>
                     @empty
                         <li class="text-slate-500">Nessun log.</li>
@@ -67,4 +106,57 @@
             </div>
         </article>
     </section>
+
+    @if ($mqttCommandTemplates !== [])
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                const templates = @json($mqttCommandTemplates);
+                const templateByCommand = Object.fromEntries(templates.map(function (template) {
+                    return [template.command, template];
+                }));
+
+                const commandPresetSelect = document.getElementById('mqtt-command-template');
+                const commandInput = document.getElementById('mqtt-command');
+                const payloadInput = document.getElementById('mqtt-payload');
+                const descriptionLabel = document.getElementById('mqtt-command-description');
+                const resetButton = document.getElementById('mqtt-reset-form');
+
+                if (! commandPresetSelect || ! commandInput || ! payloadInput || ! descriptionLabel || ! resetButton) {
+                    return;
+                }
+
+                const defaultDescription = 'Scegli un preset per compilare automaticamente comando e payload.';
+
+                const applyPreset = function (command) {
+                    const selectedTemplate = templateByCommand[command];
+                    if (! selectedTemplate) {
+                        descriptionLabel.textContent = defaultDescription;
+                        return;
+                    }
+
+                    commandInput.value = selectedTemplate.command;
+
+                    const payload = selectedTemplate.payload || {};
+                    payloadInput.value = Object.keys(payload).length === 0 ? '' : JSON.stringify(payload, null, 2);
+
+                    descriptionLabel.textContent = selectedTemplate.description || defaultDescription;
+                };
+
+                commandPresetSelect.addEventListener('change', function () {
+                    applyPreset(this.value);
+                });
+
+                resetButton.addEventListener('click', function () {
+                    commandPresetSelect.value = '';
+                    commandInput.value = '';
+                    payloadInput.value = '';
+                    descriptionLabel.textContent = defaultDescription;
+                });
+
+                if (commandPresetSelect.value !== '') {
+                    applyPreset(commandPresetSelect.value);
+                }
+            });
+        </script>
+    @endif
 @endsection

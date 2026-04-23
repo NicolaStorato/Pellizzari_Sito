@@ -7,44 +7,64 @@
 
 @theme {
     --font-sans: 'Space Grotesk', ui-sans-serif, sans-serif;
-    --color-brand-50: oklch(0.95 0.04 195);
-    --color-brand-100: oklch(0.89 0.07 198);
-    --color-brand-500: oklch(0.58 0.15 207);
-    --color-brand-700: oklch(0.42 0.12 211);
-    --color-signal-500: oklch(0.67 0.16 55);
-    --color-safe-500: oklch(0.63 0.16 145);
+    --color-brand-50: oklch(0.97 0.015 222);
+    --color-brand-100: oklch(0.92 0.04 224);
+    --color-brand-500: oklch(0.56 0.16 230);
+    --color-brand-700: oklch(0.42 0.12 232);
+    --color-accent-500: oklch(0.7 0.16 76);
+    --color-success-500: oklch(0.64 0.15 150);
 }
 
 @layer base {
     body {
-        @apply bg-slate-50 text-slate-900;
-        background-image: radial-gradient(circle at 0% 0%, rgba(76, 181, 245, 0.12), transparent 38%),
-            radial-gradient(circle at 100% 100%, rgba(247, 175, 57, 0.14), transparent 30%);
+        @apply bg-slate-100 text-slate-900 antialiased;
+        background-image:
+            radial-gradient(circle at 10% 0%, color-mix(in oklab, var(--color-brand-500) 22%, transparent), transparent 44%),
+            radial-gradient(circle at 100% 10%, color-mix(in oklab, var(--color-accent-500) 26%, transparent), transparent 34%),
+            linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(241, 245, 249, 0.9));
+    }
+
+    h1,
+    h2,
+    h3 {
+        @apply tracking-tight text-slate-900;
+    }
+
+    table thead th {
+        @apply border-b border-slate-200 pb-3;
+    }
+
+    table tbody td {
+        @apply align-top;
     }
 }
 
 @layer components {
     .panel {
-        @apply rounded-2xl border border-slate-200/70 bg-white/90 shadow-sm backdrop-blur;
+        @apply rounded-3xl border border-slate-200/80 bg-white/90 shadow-[0_24px_60px_-30px_rgba(15,23,42,0.45)] backdrop-blur-sm;
     }
 
     .panel-header {
-        @apply border-b border-slate-200/80 px-6 py-4 text-sm font-semibold uppercase tracking-wide text-slate-600;
+        @apply border-b border-slate-200/90 px-6 py-4 text-sm font-semibold uppercase tracking-[0.08em] text-slate-600;
     }
 
     .panel-body {
-        @apply p-6;
+        @apply p-6 md:p-7;
     }
 
     .form-input {
-        @apply mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/25;
+        @apply mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-100;
     }
 
     .btn-primary {
-        @apply inline-flex items-center justify-center rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-800;
+        @apply inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-brand-700 to-brand-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-brand-500 hover:to-brand-700 hover:shadow-md;
     }
 
     .btn-secondary {
-        @apply inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100;
+        @apply inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-brand-100 hover:bg-brand-50;
+    }
+
+    .btn-sm {
+        @apply px-3 py-1.5 text-xs;
     }
 }

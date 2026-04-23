@@ -75,6 +75,8 @@ class DispenserController extends Controller
 
         return view('dispensers.show', [
             'dispenser' => $dispenser,
+            'mqttCommandTemplates' => $this->mqttCommandTemplates(),
+            'mqttCommandTopicBase' => $dispenser->mqtt_base_topic ?: $this->defaultMqttTopicBase($dispenser->device_uid),
         ]);
     }
 
@@ -146,5 +148,39 @@ class DispenserController extends Controller
             ->exists();
 
         abort_if(! $allowed, 403);
+    }
+
+    /**
+     * @return array<int, array{command:string,label:string,description:string,payload:array<string, mixed>}>
+     */
+    private function mqttCommandTemplates(): array
+    {
+        $configuredTemplates = config('services.mqtt.commands', []);
+
+        if (! is_array($configuredTemplates)) {
+            return [];
+        }
+
+        return collect($configuredTemplates)
+            ->filter(static fn (mixed $template, mixed $command): bool => is_array($template) && is_string($command))
+            ->map(static function (array $template, string $command): array {
+                $payload = $template['payload'] ?? [];
+
+                return [
+                    'command' => $command,
+                    'label' => (string) ($template['label'] ?? Str::headline(str_replace('_', ' ', $command))),
+                    'description' => (string) ($template['description'] ?? ''),
+                    'payload' => is_array($payload) ? $payload : [],
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function defaultMqttTopicBase(string $deviceUid): string
+    {
+        $topicRoot = trim((string) config('services.mqtt.topic_root', 'smart-dispenser'), '/');
+
+        return $topicRoot.'/'.$deviceUid;
     }
 }

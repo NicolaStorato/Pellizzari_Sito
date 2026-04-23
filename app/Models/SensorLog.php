@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\SensorLogFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SensorLog extends Model
 {
-    /** @use HasFactory<\Database\Factories\SensorLogFactory> */
+    /** @use HasFactory<SensorLogFactory> */
     use HasFactory;
 
     /**
@@ -20,7 +21,6 @@ class SensorLog extends Model
         'patient_id',
         'temperature',
         'humidity',
-        'battery_level',
         'threshold_exceeded',
         'threshold_violations',
         'recorded_at',

@@ -30,11 +30,11 @@
     </div>
 
     <div>
-        <label class="text-sm font-medium text-slate-700" for="minimum_temperature">Temp. minima (°C)</label>
+        <label class="text-sm font-medium text-slate-700" for="minimum_temperature">Temp. minima (&deg;C)</label>
         <input class="form-input" type="number" step="0.1" name="minimum_temperature" id="minimum_temperature" value="{{ old('minimum_temperature', $medicine->minimum_temperature ?? '') }}">
     </div>
     <div>
-        <label class="text-sm font-medium text-slate-700" for="maximum_temperature">Temp. massima (°C)</label>
+        <label class="text-sm font-medium text-slate-700" for="maximum_temperature">Temp. massima (&deg;C)</label>
         <input class="form-input" type="number" step="0.1" name="maximum_temperature" id="maximum_temperature" value="{{ old('maximum_temperature', $medicine->maximum_temperature ?? '') }}">
     </div>
     <div>

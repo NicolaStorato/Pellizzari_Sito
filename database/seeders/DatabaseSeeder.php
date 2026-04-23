@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Alert;
+use App\Models\Appointment;
 use App\Models\Dispenser;
 use App\Models\DoseLog;
 use App\Models\Medicine;
@@ -150,6 +151,14 @@ class DatabaseSeeder extends Seeder
             Alert::factory()->count(3)->create([
                 'patient_id' => $patient->id,
                 'dispenser_id' => $dispenser->id,
+            ]);
+
+            Appointment::factory()->create([
+                'patient_id' => $patient->id,
+                'doctor_id' => $doctor->id,
+                'scheduled_at' => now()->addDays(2)->setTime(10, 30),
+                'status' => Appointment::STATUS_PENDING,
+                'patient_notes' => 'Controllo periodico terapia.',
             ]);
         }
     }

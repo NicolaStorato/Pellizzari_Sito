@@ -165,10 +165,11 @@ class DeviceMqttListenCommand extends Command
             return;
         }
 
+        $payload = $this->normalizeTelemetryPayload($payload);
+
         $validator = Validator::make($payload, [
             'temperature' => ['required', 'numeric', 'between:-40,120'],
             'humidity' => ['required', 'numeric', 'between:0,100'],
-            'battery_level' => ['nullable', 'integer', 'between:0,100'],
             'recorded_at' => ['nullable', 'date'],
         ]);
 
@@ -268,6 +269,23 @@ class DeviceMqttListenCommand extends Command
         );
 
         $this->line('Status aggiornato per '.$dispenser->device_uid);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function normalizeTelemetryPayload(array $payload): array
+    {
+        if (! array_key_exists('temperature', $payload) && array_key_exists('temperatura', $payload)) {
+            $payload['temperature'] = $payload['temperatura'];
+        }
+
+        if (! array_key_exists('humidity', $payload) && array_key_exists('umidita', $payload)) {
+            $payload['humidity'] = $payload['umidita'];
+        }
+
+        return $payload;
     }
 
     /**

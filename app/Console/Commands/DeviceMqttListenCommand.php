@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Dispenser;
 use App\Models\DoseLog;
+use App\Models\TherapyPlan;
 use App\Models\User;
 use App\Services\DeviceEventIngestionService;
 use App\Services\MqttPublisher;
@@ -29,6 +30,7 @@ class DeviceMqttListenCommand extends Command
     protected $signature = 'device:mqtt-listen
                             {--topic-root= : Root topic MQTT (default da MQTT_TOPIC_ROOT)}
                             {--login-topic=esp32/login_request : Topic su cui ascoltare le richieste di login mobile}
+                            {--schedule-topic=esp32/schedule_request : Topic su cui ascoltare le richieste di disposizione settimanale medicine}
                             {--max-seconds=0 : Arresta il listener dopo N secondi (0 = infinito)}';
 
     /**
@@ -66,18 +68,19 @@ class DeviceMqttListenCommand extends Command
             return self::FAILURE;
         }
 
-        $telemetrySuffix = trim((string) config('services.mqtt.topic_telemetry_suffix', 'events/telemetry'), '/');
-        $doseLogSuffix = trim((string) config('services.mqtt.topic_dose_log_suffix', 'events/dose-log'), '/');
-        $statusSuffix = trim((string) config('services.mqtt.topic_status_suffix', 'status'), '/');
-        $loginTopic = (string) $this->option('login-topic');
+        $telemetrySuffix  = trim((string) config('services.mqtt.topic_telemetry_suffix', 'events/telemetry'), '/');
+        $doseLogSuffix    = trim((string) config('services.mqtt.topic_dose_log_suffix', 'events/dose-log'), '/');
+        $statusSuffix     = trim((string) config('services.mqtt.topic_status_suffix', 'status'), '/');
+        $loginTopic       = (string) $this->option('login-topic');
+        $scheduleTopic    = (string) $this->option('schedule-topic');
 
-        $port = (int) config('services.mqtt.port', 1883);
-        $clientId = (string) config('services.mqtt.client_id', 'smart-dispenser-web');
-        $cleanSession = (bool) config('services.mqtt.clean_session', true);
-        $username = config('services.mqtt.username');
-        $password = config('services.mqtt.password');
-        $useTls = (bool) config('services.mqtt.use_tls', false);
-        $maxSeconds = max(0, (int) $this->option('max-seconds'));
+        $port         = (int)    config('services.mqtt.port', 1883);
+        $clientId     = (string) config('services.mqtt.client_id', 'smart-dispenser-web');
+        $cleanSession = (bool)   config('services.mqtt.clean_session', true);
+        $username     = config('services.mqtt.username');
+        $password     = config('services.mqtt.password');
+        $useTls       = (bool)   config('services.mqtt.use_tls', false);
+        $maxSeconds   = max(0, (int) $this->option('max-seconds'));
 
         $mqtt = new MqttClient($host, $port, $clientId.'-listener-'.Str::lower(Str::random(8)));
 
@@ -124,6 +127,15 @@ class DeviceMqttListenCommand extends Command
                 },
             );
 
+            // --- Topic disposizione settimanale medicine (tecnica reply_to) ---
+            $this->subscribe(
+                mqtt: $mqtt,
+                topicFilter: $scheduleTopic,
+                handler: function (string $topic, string $message): void {
+                    $this->handleWeeklyScheduleRequest($topic, $message);
+                },
+            );
+
             if ($maxSeconds > 0) {
                 $mqtt->registerLoopEventHandler(function (MqttClient $client, float $elapsedTime) use ($maxSeconds): void {
                     if ($elapsedTime >= $maxSeconds) {
@@ -150,6 +162,130 @@ class DeviceMqttListenCommand extends Command
                 // Ignora eventuali errori di disconnessione.
             }
         }
+    }
+
+    // =========================================================================
+    // Disposizione settimanale medicine via MQTT (tecnica reply_to)
+    // =========================================================================
+
+    /**
+     * Gestisce una richiesta di disposizione settimanale medicine.
+     *
+     * Payload atteso:
+     *   {
+     *     "device_uid": "ESP32-XXXX",
+     *     "reply_to": "esp32/schedule_response/ESP32-XXXX"
+     *   }
+     *
+     * Risposta pubblicata sul topic reply_to (successo):
+     *   {
+     *     "success": true,
+     *     "patient_id": 3,
+     *     "plans": [
+     *       {
+     *         "therapy_plan_id": 1,
+     *         "medicine_name": "Aspirina",
+     *         "dose_amount": "1.00",
+     *         "dose_unit": "pill",
+     *         "starts_on": "2025-01-01",
+     *         "ends_on": "2025-06-30",
+     *         "instructions": "Da prendere a stomaco pieno",
+     *         "schedules": [
+     *           {
+     *             "schedule_id": 1,
+     *             "scheduled_time": "08:00",
+     *             "week_days": [1, 3, 5]
+     *           }
+     *         ]
+     *       }
+     *     ],
+     *     "replied_at": "2025-01-01T12:00:00+00:00"
+     *   }
+     *
+     * Risposta in caso di errore:
+     *   { "success": false, "error": "...", "replied_at": "..." }
+     */
+    private function handleWeeklyScheduleRequest(string $topic, string $message): void
+    {
+        $this->line('[SCHEDULE] Richiesta ricevuta su '.$topic);
+
+        $payload = $this->decodePayload($message, $topic);
+
+        if ($payload === null) {
+            return;
+        }
+
+        $validator = Validator::make($payload, [
+            'device_uid' => ['required', 'string', 'max:255'],
+            'reply_to'   => ['required', 'string', 'max:500'],
+        ]);
+
+        if ($validator->fails()) {
+            $this->warn('[SCHEDULE] Payload non valido: '.$validator->errors()->first());
+            return;
+        }
+
+        $validated  = $validator->validated();
+        $deviceUid  = (string) $validated['device_uid'];
+        $replyTo    = (string) $validated['reply_to'];
+
+        // Cerca il dispenser tramite device_uid
+        /** @var Dispenser|null $dispenser */
+        $dispenser = Dispenser::query()
+            ->where('device_uid', $deviceUid)
+            ->where('is_active', true)
+            ->first();
+
+        if ($dispenser === null) {
+            $this->warn('[SCHEDULE] Nessun dispenser attivo trovato per device_uid: '.$deviceUid);
+
+            $this->mqttPublisher->publishTo($replyTo, [
+                'success'    => false,
+                'error'      => 'Dispenser non trovato o non attivo.',
+                'replied_at' => now()->toIso8601String(),
+            ]);
+
+            return;
+        }
+
+        // Recupera i piani terapia attivi del paziente con orari e medicine
+        $plans = TherapyPlan::query()
+            ->with(['medicine', 'schedules'])
+            ->where('patient_id', $dispenser->patient_id)
+            ->where('is_active', true)
+            ->get();
+
+        // Costruisce la risposta strutturata
+        $plansData = $plans->map(function (TherapyPlan $plan): array {
+            $schedulesData = $plan->schedules->map(function ($schedule): array {
+                return [
+                    'schedule_id'    => $schedule->id,
+                    'scheduled_time' => $schedule->scheduled_time,
+                    'week_days'      => $schedule->week_days ?? [],
+                    'timezone'       => $schedule->timezone ?? 'UTC',
+                ];
+            })->values()->all();
+
+            return [
+                'therapy_plan_id' => $plan->id,
+                'medicine_name'   => $plan->medicine?->name ?? 'N/D',
+                'dose_amount'     => $plan->dose_amount,
+                'dose_unit'       => $plan->dose_unit,
+                'starts_on'       => $plan->starts_on?->toDateString(),
+                'ends_on'         => $plan->ends_on?->toDateString(),
+                'instructions'    => $plan->instructions,
+                'schedules'       => $schedulesData,
+            ];
+        })->values()->all();
+
+        $this->info('[SCHEDULE] Invio disposizione settimanale per dispenser '.$deviceUid.' ('.$plans->count().' piani attivi)');
+
+        $this->mqttPublisher->publishTo($replyTo, [
+            'success'    => true,
+            'patient_id' => $dispenser->patient_id,
+            'plans'      => $plansData,
+            'replied_at' => now()->toIso8601String(),
+        ]);
     }
 
     // =========================================================================
@@ -239,13 +375,13 @@ class DeviceMqttListenCommand extends Command
         $this->info('[LOGIN] Autenticazione riuscita per: '.$user->email.' (ruolo: '.$user->role?->value.')');
 
         $this->mqttPublisher->publishTo($replyTo, [
-            'success'      => true,
-            'user_id'      => $user->id,
-            'name'         => $user->name,
-            'email'        => $user->email,
-            'role'         => $user->role?->value,
-            'dispenser_uid'=> $dispenserUid,
-            'replied_at'   => now()->toIso8601String(),
+            'success'       => true,
+            'user_id'       => $user->id,
+            'name'          => $user->name,
+            'email'         => $user->email,
+            'role'          => $user->role?->value,
+            'dispenser_uid' => $dispenserUid,
+            'replied_at'    => now()->toIso8601String(),
         ]);
     }
 
@@ -273,7 +409,7 @@ class DeviceMqttListenCommand extends Command
 
         $validator = Validator::make($payload, [
             'temperature' => ['required', 'numeric', 'between:-40,120'],
-            'humidity' => ['required', 'numeric', 'between:0,100'],
+            'humidity'    => ['required', 'numeric', 'between:0,100'],
             'recorded_at' => ['nullable', 'date'],
         ]);
 
@@ -313,8 +449,8 @@ class DeviceMqttListenCommand extends Command
 
         $validator = Validator::make($payload, [
             'therapy_plan_id' => ['nullable', 'integer', 'exists:therapy_plans,id'],
-            'medicine_id' => ['nullable', 'integer', 'exists:medicines,id'],
-            'status' => [
+            'medicine_id'     => ['nullable', 'integer', 'exists:medicines,id'],
+            'status'          => [
                 'required',
                 Rule::in([
                     DoseLog::STATUS_PENDING,
@@ -326,8 +462,8 @@ class DeviceMqttListenCommand extends Command
                 ]),
             ],
             'scheduled_for' => ['nullable', 'date'],
-            'event_at' => ['nullable', 'date'],
-            'notes' => ['nullable', 'string', 'max:1000'],
+            'event_at'      => ['nullable', 'date'],
+            'notes'         => ['nullable', 'string', 'max:1000'],
         ]);
 
         if ($validator->fails()) {
@@ -361,8 +497,8 @@ class DeviceMqttListenCommand extends Command
         }
 
         $validator = Validator::make($payload, [
-            'is_online' => ['nullable', 'boolean'],
-            'last_seen_at' => ['nullable', 'date'],
+            'is_online'   => ['nullable', 'boolean'],
+            'last_seen_at'=> ['nullable', 'date'],
         ]);
 
         if ($validator->fails()) {
@@ -446,7 +582,7 @@ class DeviceMqttListenCommand extends Command
             return null;
         }
 
-        $baseTopic = Str::beforeLast($topic, $suffixPath);
+        $baseTopic        = Str::beforeLast($topic, $suffixPath);
         $deviceIdentifier = Str::afterLast($baseTopic, '/');
 
         return Dispenser::query()

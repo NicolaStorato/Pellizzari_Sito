@@ -172,7 +172,7 @@ class DeviceMqttListenCommand extends Command
      */
     private function handleWeeklyScheduleRequest(string $topic, string $message): void
     {
-        $this->line('[SCHEDULE] Richiesta ricevuta su '.$topic);
+        $this->line('[SCHEDULE] Richiesta esplicita ricevuta su '.$topic);
 
         $payload = $this->decodePayload($message, $topic);
         if ($payload === null) {
@@ -181,7 +181,7 @@ class DeviceMqttListenCommand extends Command
 
         $validator = Validator::make($payload, [
             'device_uid' => ['required', 'string', 'max:255'],
-            'reply_to'   => ['required', 'string', 'max:500'],
+            'reply_to'   => ['nullable', 'string', 'max:500'],
         ]);
 
         if ($validator->fails()) {
@@ -191,9 +191,7 @@ class DeviceMqttListenCommand extends Command
 
         $validated = $validator->validated();
         $deviceUid = (string) $validated['device_uid'];
-        $replyTo   = (string) $validated['reply_to'];
 
-        // 1. Trova il dispenser
         /** @var Dispenser|null $dispenser */
         $dispenser = Dispenser::query()
             ->where('device_uid', $deviceUid)
@@ -202,85 +200,11 @@ class DeviceMqttListenCommand extends Command
 
         if ($dispenser === null) {
             $this->warn('[SCHEDULE] Nessun dispenser attivo per device_uid: '.$deviceUid);
-            $this->mqttPublisher->publishTo($replyTo, [
-                'success'    => false,
-                'error'      => 'Dispenser non trovato o non attivo.',
-                'replied_at' => now()->toIso8601String(),
-            ]);
             return;
         }
 
-        // 2. Carica tutti i piani terapia attivi con schedules e medicine
-        $plans = TherapyPlan::query()
-            ->with(['medicine', 'schedules'])
-            ->where('patient_id', $dispenser->patient_id)
-            ->where('is_active', true)
-            ->get();
-
-        // 3. Costruisce i 7 giorni (oggi → oggi+6)
-        $today   = Carbon::today();
-        $daysData = [];
-
-        for ($offset = 0; $offset < 7; $offset++) {
-            $day           = $today->copy()->addDays($offset);
-            $isoWeekday    = $day->isoWeekday(); // 1=Lun … 7=Dom
-            $prescriptions = [];
-
-            foreach ($plans as $plan) {
-                // Verifica che il piano sia valido in questa data
-                if ($plan->starts_on->greaterThan($day)) {
-                    continue;
-                }
-                if ($plan->ends_on !== null && $plan->ends_on->lessThan($day)) {
-                    continue;
-                }
-
-                foreach ($plan->schedules as $schedule) {
-                    $weekDays = $schedule->week_days ?? [];
-
-                    // Array vuoto = ogni giorno; altrimenti controlla ISO weekday
-                    $activeTodayy = empty($weekDays) || in_array($isoWeekday, $weekDays, true);
-
-                    if (! $activeTodayy) {
-                        continue;
-                    }
-
-                    $prescriptions[] = [
-                        'therapy_plan_id' => $plan->id,
-                        'medicine_name'   => $plan->medicine?->name ?? 'N/D',
-                        'dose_amount'     => $plan->dose_amount,
-                        'dose_unit'       => $plan->dose_unit,
-                        'time'            => $schedule->scheduled_time,
-                        'instructions'    => $plan->instructions,
-                    ];
-                }
-            }
-
-            // Ordina le prescrizioni del giorno per orario crescente
-            usort($prescriptions, static fn (array $a, array $b): int => strcmp((string) $a['time'], (string) $b['time']));
-
-            $daysData[] = [
-                'date'          => $day->toDateString(),
-                'day_name'      => $day->englishDayOfWeek,
-                'prescriptions' => $prescriptions,
-            ];
-        }
-
-        $totalPrescriptions = array_sum(array_map(static fn (array $d): int => count($d['prescriptions']), $daysData));
-
-        $this->info(sprintf(
-            '[SCHEDULE] Risposta inviata per %s — %d piani, %d somministrazioni nei prossimi 7 giorni',
-            $deviceUid,
-            $plans->count(),
-            $totalPrescriptions,
-        ));
-
-        $this->mqttPublisher->publishTo($replyTo, [
-            'success'    => true,
-            'patient_id' => $dispenser->patient_id,
-            'days'       => $daysData,
-            'replied_at' => now()->toIso8601String(),
-        ]);
+        // Usa sempre il topic standard; reply_to è opzionale e ignorato
+        $this->publishWeekSchedule($dispenser);
     }
 
     // =========================================================================
@@ -476,6 +400,90 @@ class DeviceMqttListenCommand extends Command
         );
 
         $this->line('Status aggiornato per '.$dispenser->device_uid);
+
+        // Risponde automaticamente con la schedule settimanale (solo date e orari)
+        $this->publishWeekSchedule($dispenser);
+    }
+
+    // =========================================================================
+    // Schedule settimanale (solo date + orari)
+    // =========================================================================
+
+    /**
+     * Pubblica la schedule settimanale pulita (solo date e orari) sul topic
+     * esp32/schedule_response/{device_uid}.
+     * Chiamato sia dallo status trigger sia dalla richiesta esplicita.
+     */
+    private function publishWeekSchedule(Dispenser $dispenser): void
+    {
+        $replyTopic = 'esp32/schedule_response/'.$dispenser->device_uid;
+        $days       = $this->buildSimpleWeekSchedule($dispenser);
+
+        $this->mqttPublisher->publishTo($replyTopic, ['days' => $days]);
+
+        $this->info(sprintf(
+            '[SCHEDULE] Schedule inviata a %s (%d slot nei prossimi 7 giorni)',
+            $dispenser->device_uid,
+            count($days),
+        ));
+    }
+
+    /**
+     * Costruisce l'array piatto dei prossimi 7 giorni.
+     * Ogni elemento contiene SOLO "date" (YYYY-MM-DD) e "time" (HH:MM).
+     * Nessun altro campo.
+     *
+     * @return list<array{date: string, time: string}>
+     */
+    private function buildSimpleWeekSchedule(Dispenser $dispenser): array
+    {
+        $plans = TherapyPlan::query()
+            ->with('schedules')
+            ->where('patient_id', $dispenser->patient_id)
+            ->where('is_active', true)
+            ->get();
+
+        $today = Carbon::today();
+        $slots = [];
+
+        for ($offset = 0; $offset < 7; $offset++) {
+            $day        = $today->copy()->addDays($offset);
+            $dateKey    = $day->toDateString();
+            $isoWeekday = $day->isoWeekday(); // 1=Lun … 7=Dom
+
+            foreach ($plans as $plan) {
+                // Piano non ancora iniziato o già terminato in questa data
+                if ($plan->starts_on->greaterThan($day)) {
+                    continue;
+                }
+                if ($plan->ends_on !== null && $plan->ends_on->lessThan($day)) {
+                    continue;
+                }
+
+                foreach ($plan->schedules as $schedule) {
+                    $weekDays    = $schedule->week_days ?? [];
+                    $activeToday = empty($weekDays) || in_array($isoWeekday, $weekDays, true);
+
+                    if (! $activeToday) {
+                        continue;
+                    }
+
+                    $slots[] = [
+                        'date' => $dateKey,
+                        'time' => substr((string) $schedule->scheduled_time, 0, 5), // "HH:MM"
+                    ];
+                }
+            }
+        }
+
+        // Ordina per data, poi per orario crescente all'interno dello stesso giorno
+        usort($slots, static fn (array $a, array $b): int =>
+            $a['date'] === $b['date']
+                ? strcmp($a['time'], $b['time'])
+                : strcmp($a['date'], $b['date'])
+        );
+
+        return $slots;
     }
 
     // =========================================================================

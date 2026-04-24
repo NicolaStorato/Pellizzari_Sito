@@ -22,7 +22,7 @@
             <article class="rounded-xl border border-slate-200 p-4 text-sm lg:col-span-2">
                 <h3 class="font-semibold text-slate-700 mb-1">Pannello Comandi MQTT</h3>
                 <p class="text-xs text-slate-500 mb-4">
-                    Topic base: <span class="font-mono">{{ $mqttCommandTopicBase }}</span>
+                    Topic: <span class="font-mono">{{ $mqttCommandTopicBase }}/commands</span>
                 </p>
 
                 @if(session('status'))
@@ -58,30 +58,7 @@
                         </form>
                     </div>
 
-                    {{-- B. Erogazione forzata slot --}}
-                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">💊 Eroga Subito (Slot)</p>
-                        <p class="mt-1 text-xs text-slate-500">Erogazione forzata di uno slot preconfigurato (0–6).</p>
-                        <form action="{{ route('dispensers.mqtt-command', $dispenser) }}" method="POST" class="mt-3 space-y-3">
-                            @csrf
-                            <input type="hidden" name="command" value="dispense_now">
-                            <div>
-                                <label class="text-xs text-slate-600" for="dispense_slot">Slot</label>
-                                <select id="dispense_slot" class="form-input mt-1 text-xs">
-                                    @for($s = 0; $s <= 6; $s++)
-                                        <option value="{{ $s }}" @selected($s === 1)>Slot {{ $s }}</option>
-                                    @endfor
-                                </select>
-                            </div>
-                            <input type="hidden" name="payload" id="dispense_now_payload">
-                            <button type="submit" class="btn-primary text-xs w-full"
-                                    onclick="document.getElementById('dispense_now_payload').value=JSON.stringify({slot:parseInt(document.getElementById('dispense_slot').value)})">
-                                Invia dispense_now
-                            </button>
-                        </form>
-                    </div>
-
-                    {{-- C. Homing --}}
+                    {{-- B. Homing --}}
                     <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
                         <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">🏠 Homing (Reset Home)</p>
                         <p class="mt-1 text-xs text-slate-500">Riporta il servo alla posizione home (quota zero). Nessun payload richiesto.</p>
@@ -96,7 +73,7 @@
                         </form>
                     </div>
 
-                    {{-- D. Sincronizzazione RTC --}}
+                    {{-- C. Sincronizzazione RTC --}}
                     <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
                         <p class="text-xs font-semibold uppercase tracking-wide text-slate-600">🕐 Sincronizza RTC</p>
                         <p class="mt-1 text-xs text-slate-500">Forza il trigger HTTP GET interno per riallineare l'orologio del firmware.</p>
@@ -110,7 +87,7 @@
                         </form>
                     </div>
 
-                    {{-- E. Riproduci Brano --}}
+                    {{-- D. Riproduci Brano --}}
                     <div class="rounded-xl border border-purple-200 bg-purple-50 p-4">
                         <p class="text-xs font-semibold uppercase tracking-wide text-purple-700">🎵 Riproduci Brano</p>
                         <p class="mt-1 text-xs text-purple-600">Invia al dispenser il numero del brano da riprodurre.</p>
@@ -130,7 +107,7 @@
                         </form>
                     </div>
 
-                    {{-- F. Iniezione configurazione terapeutica (schedule_response) --}}
+                    {{-- E. Iniezione configurazione terapeutica (schedule_response) --}}
                     <div class="rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2">
                         <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">📅 Iniezione Schedule Terapeutico</p>
                         <p class="mt-1 text-xs text-blue-600">
@@ -198,11 +175,11 @@
                         @endif
                         <div>
                             <label class="text-xs uppercase tracking-wider text-slate-500" for="mqtt-command">Comando</label>
-                            <input id="mqtt-command" class="form-input" name="command" value="{{ old('command') }}" placeholder="dispense_now" required>
+                            <input id="mqtt-command" class="form-input" name="command" value="{{ old('command') }}" placeholder="set_position" required>
                         </div>
                         <div class="md:col-span-2">
                             <label class="text-xs uppercase tracking-wider text-slate-500" for="mqtt-payload">Payload JSON</label>
-                            <textarea id="mqtt-payload" class="form-input min-h-24 font-mono text-xs" name="payload" placeholder='{"slot":1}'>{{ old('payload') }}</textarea>
+                            <textarea id="mqtt-payload" class="form-input min-h-24 font-mono text-xs" name="payload" placeholder='{"position_ms":3500}'>{{ old('payload') }}</textarea>
                         </div>
                         <div class="md:col-span-3 flex flex-wrap items-center gap-2">
                             <button type="submit" class="btn-primary">Invia al Broker</button>
@@ -223,6 +200,7 @@
                                 Invia in un click tutti i piani terapeutici attivi associati a
                                 <strong>{{ $dispenser->patient->name ?? 'questo paziente' }}</strong>
                                 al dispenser via MQTT (<code class="font-mono">set_therapy</code>).
+                                Il firmware risponderà con una richiesta di re-sincronizzazione automatica dello schedule.
                             </p>
                         </div>
                         <form action="{{ route('dispensers.publish-all-therapies', $dispenser) }}" method="POST">

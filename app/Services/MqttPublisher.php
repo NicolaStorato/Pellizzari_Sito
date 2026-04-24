@@ -10,7 +10,9 @@ use PhpMqtt\Client\MqttClient;
 class MqttPublisher
 {
     /**
-     * Pubblica un comando strutturato sul topic di un dispenser.
+     * Pubblica un comando strutturato sul topic comandi univoco del dispenser.
+     * Tutti i comandi convergono su <topicBase>/commands.
+     * Il campo "command" nel payload JSON identifica il tipo di operazione.
      *
      * @param  array<string, mixed>  $payload
      */
@@ -18,7 +20,7 @@ class MqttPublisher
     {
         $topicRoot = trim((string) config('services.mqtt.topic_root', 'smart-dispenser'), '/');
         $topicBase = $dispenser->mqtt_base_topic ?: $topicRoot.'/'.$dispenser->device_uid;
-        $topic = $topicBase.'/commands/'.$command;
+        $topic = $topicBase.'/commands';
 
         return $this->publishRaw($topic, json_encode([
             'command' => $command,
